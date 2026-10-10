@@ -1,0 +1,23 @@
+{
+  "name": "s-meal",
+  "version": "1.0.0",
+  "description": "Private, consent-based reminder system: React admin site (phone-first) + MV3 Chrome extension + Supabase (Postgres/RLS/RPC).",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:rls": "vitest run tests/rls"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "vitest": "^5.0.3"
+  }
+}

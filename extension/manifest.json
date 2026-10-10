@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "s.meal",
+  "version": "0.1.0",
+  "description": "Gentle reminders from someone who cares. Pause, hide or disconnect any time.",
+  "permissions": [
+    "alarms",
+    "notifications",
+    "storage"
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "s.meal",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*/*"
+      ],
+      "exclude_matches": [
+        "https://*.supabase.co/*",
+        "https://accounts.google.com/*",
+        "https://*.1password.com/*",
+        "https://*.bitwarden.com/*",
+        "https://*.lastpass.com/*",
+        "https://*.paypal.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
