@@ -62,11 +62,31 @@ async function render() {
       const rid = data[0].relationship_id as string; app.replaceChildren(card(el('p', `Pair with ${data[0].admin_name}? They will be able to send you reminders. They cannot see if you read them, and you can disconnect any time.`),
         btn('Approve pairing', async () => { const r = await sb.rpc('approve_pairing', { rid }); if (r.error) m.textContent = 'Could not approve.'; else { chrome.runtime.sendMessage({ type: 'sync' }); render(); } }), btn('Cancel', async () => { await sb.rpc('set_relationship_status', { rid, s: 'revoked' }); render(); }, true), m)); }), m)); app.append(btn('Sign out', async () => { await sb.auth.signOut(); render(); }, true)); return; }
   await chrome.runtime.sendMessage({ type: 'sync' }).catch(() => {});
-  const { data: items } = await sb.from('inbox_items').select('id,title_snapshot,body_snapshot,category_snapshot,available_at').eq('status', 'available').order('available_at', { ascending: false }).limit(20);
+  const { data: items, error: inboxErr } = await sb.from('inbox_items').select('id,title_snapshot,body_snapshot,category_snapshot,available_at').eq('status', 'available').order('available_at', { ascending: false }).limit(20);
   const { data: rel } = await sb.from('relationships').select('status').eq('id', prefs.relationship_id).single();
   app.append(card(el('b', `Status: ${rel?.status ?? 'unknown'}`), btn(rel?.status === 'paused' ? 'Resume reminders' : 'Pause reminders', async () => { await sb.rpc('set_relationship_status', { rid: prefs.relationship_id, s: rel?.status === 'paused' ? 'active' : 'paused' }); render(); }, true)));
-  const inbox = card(el('b', 'Inbox')); if (!items?.length) inbox.append(el('p', 'No messages right now.', 'm'));
-  items?.forEach(i => { const d = el('div', '', 'c'); d.append(el('div', `${i.category_snapshot} · ${new Date(i.available_at).toLocaleString()}`, 'm'), el('div', i.body_snapshot), btn('Dismiss', async () => { await sb.from('inbox_items').update({ status: 'dismissed' }).eq('id', i.id); render(); }, true)); inbox.append(d); });
+  const refresh = btn('Refresh', async () => {
+    refresh.disabled = true; refresh.textContent = '…';
+    await chrome.runtime.sendMessage({ type: 'sync' }).catch(() => {});
+    render();
+  }, true);
+  const inboxHeader = el('div'); inboxHeader.style.display = 'flex'; inboxHeader.style.justifyContent = 'space-between'; inboxHeader.style.alignItems = 'center';
+  inboxHeader.append(el('b', 'Inbox'), refresh);
+  const inbox = card(inboxHeader);
+  if (inboxErr) {
+    inbox.append(el('p', `Could not load inbox: ${inboxErr.message}`, 'm'));
+  } else if (!items?.length) {
+    inbox.append(el('p', 'No messages right now.', 'm'));
+  } else {
+    items.forEach(i => {
+      const d = el('div', '', 'c');
+      d.append(el('div', `${i.category_snapshot} · ${new Date(i.available_at).toLocaleString()}`, 'm'));
+      if (i.title_snapshot) { const t = el('div'); t.style.fontWeight = 'bold'; t.textContent = i.title_snapshot; d.append(t); }
+      const b = el('div'); b.textContent = i.body_snapshot; d.append(b);
+      d.append(btn('Dismiss', async () => { await sb.from('inbox_items').update({ status: 'dismissed' }).eq('id', i.id); render(); }, true));
+      inbox.append(d);
+    });
+  }
   app.append(inbox);
   const tog = (label: string, k: keyof Prefs) => { const l = el('label'); const c = document.createElement('input'); c.type = 'checkbox'; c.style.width = 'auto'; c.checked = prefs[k] as boolean; c.onchange = async () => { await sb.from('preferences').update({ [k]: c.checked, updated_at: new Date().toISOString() }).eq('relationship_id', prefs.relationship_id); }; l.append(c, ' ' + label); l.style.display = 'block'; return l; };
   const qs = field('Quiet from (HH:MM)'), qe = field('Quiet until (HH:MM)'), cap = field('Max reminders per shift (0-3)', 'number'); qs.value = prefs.quiet_hours_start?.slice(0, 5) ?? ''; qe.value = prefs.quiet_hours_end?.slice(0, 5) ?? ''; cap.value = String(prefs.max_reminders_per_shift);
