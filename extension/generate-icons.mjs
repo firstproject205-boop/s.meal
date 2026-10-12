@@ -3,32 +3,30 @@ import zlib from 'node:zlib';
 import path from 'node:path';
 
 function createPng(width, height) {
-  // RGBA buffer: fill with a gentle warm circle
   const raw = Buffer.alloc((width * 4 + 1) * height);
-  const cx = width / 2;
-  const cy = height / 2;
-  const r = width * 0.42;
+  const rad = Math.max(2, Math.round(width * 0.22));
 
   let offset = 0;
   for (let y = 0; y < height; y++) {
     raw[offset++] = 0; // Filter type 0 (None)
     for (let x = 0; x < width; x++) {
-      const dx = x - cx;
-      const dy = y - cy;
+      const qx = Math.max(rad, Math.min(width - 1 - rad, x));
+      const qy = Math.max(rad, Math.min(height - 1 - rad, y));
+      const dx = Math.abs(x - qx);
+      const dy = Math.abs(y - qy);
       const dist = Math.sqrt(dx * dx + dy * dy);
 
-      if (dist <= r) {
-        // Warm peach / coral tone (#d9776b)
-        raw[offset++] = 217; // R
-        raw[offset++] = 119; // G
-        raw[offset++] = 107; // B
+      if (dist <= rad) {
+        // Solid coral #d97766
+        raw[offset++] = 217; // R (0xd9)
+        raw[offset++] = 119; // G (0x77)
+        raw[offset++] = 102; // B (0x66)
         raw[offset++] = 255; // A
-      } else if (dist <= r + 1) {
-        // Anti-aliased edge
-        const alpha = Math.max(0, Math.min(255, Math.round((r + 1 - dist) * 255)));
+      } else if (dist <= rad + 1) {
+        const alpha = Math.max(0, Math.min(255, Math.round((rad + 1 - dist) * 255)));
         raw[offset++] = 217;
         raw[offset++] = 119;
-        raw[offset++] = 107;
+        raw[offset++] = 102;
         raw[offset++] = alpha;
       } else {
         raw[offset++] = 0;
@@ -80,11 +78,20 @@ function createPng(width, height) {
   return Buffer.concat([signature, ihdrChunk, idatChunk, iendChunk]);
 }
 
-const outDir = path.resolve('extension/icons');
-fs.mkdirSync(outDir, { recursive: true });
+const targetDirs = [
+  path.resolve('src/icons'),
+  path.resolve('icons'),
+];
+
+for (const dir of targetDirs) {
+  fs.mkdirSync(dir, { recursive: true });
+}
 
 for (const size of [16, 32, 48, 128]) {
   const buf = createPng(size, size);
-  fs.writeFileSync(path.join(outDir, `icon-${size}.png`), buf);
-  console.log(`Generated icon-${size}.png (${buf.length} bytes)`);
+  for (const dir of targetDirs) {
+    fs.writeFileSync(path.join(dir, `icon${size}.png`), buf);
+    fs.writeFileSync(path.join(dir, `icon-${size}.png`), buf);
+  }
+  console.log(`Generated icon${size}.png (${buf.length} bytes)`);
 }

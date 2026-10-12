@@ -6,6 +6,7 @@ fs.rmSync('dist', { recursive: true, force: true }); fs.mkdirSync('dist', { recu
 await build({ entryPoints: ['src/background.ts', 'src/popup.ts', 'src/content.ts'], bundle: true, outdir: 'dist', format: 'esm', target: 'chrome120', minify: true,
   define: { __SUPABASE_URL__: JSON.stringify(url), __SUPABASE_KEY__: JSON.stringify(key) } });
 fs.copyFileSync('src/popup.html', 'dist/popup.html');
-if (fs.existsSync('icons')) { fs.cpSync('icons', 'dist/icons', { recursive: true }); }
+const iconSrc = fs.existsSync('src/icons') ? 'src/icons' : fs.existsSync('icons') ? 'icons' : null;
+if (iconSrc) { fs.cpSync(iconSrc, 'dist/icons', { recursive: true }); }
 const m = JSON.parse(fs.readFileSync('manifest.json', 'utf8')); m.host_permissions = [new URL(url).origin + '/*'];
 fs.writeFileSync('dist/manifest.json', JSON.stringify(m, null, 2)); console.log('Built dist/');
