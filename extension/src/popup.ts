@@ -8,8 +8,53 @@ function field(ph: string, type = 'text') { const i = document.createElement('in
 async function render() {
   app.replaceChildren();
   const { data: s } = await sb.auth.getSession();
-  if (!s.session) { const e = field('Email', 'email'), p = field('Password', 'password'), m = el('p', '', 'm');
-    app.append(card(el('p', 'Sign in to connect. This extension shows gentle reminders from your paired person. You can pause, hide or disconnect at any time.'), e, p, btn('Sign in', async () => { const { error } = await sb.auth.signInWithPassword({ email: e.value, password: p.value }); if (error) m.textContent = 'Sign-in failed.'; else render(); }), m)); return; }
+  if (!s.session) {
+    let mode: 'signin' | 'signup' = 'signin';
+    const dn = field('Display name'); dn.maxLength = 60;
+    const e = field('Email', 'email'), p = field('Password', 'password'), p2 = field('Confirm password', 'password');
+    const m = el('p', '', 'm');
+    const setBusy = (busy: boolean) => {
+      dn.disabled = e.disabled = p.disabled = p2.disabled = submit.disabled = toggle.disabled = busy;
+      submit.textContent = busy ? 'Please wait…' : (mode === 'signin' ? 'Sign in' : 'Sign up');
+    };
+    const updateMode = (newMode: 'signin' | 'signup') => {
+      mode = newMode;
+      toggle.textContent = mode === 'signin' ? 'Create an account' : 'Already have an account? Sign in';
+      submit.textContent = mode === 'signin' ? 'Sign in' : 'Sign up';
+      dn.style.display = mode === 'signup' ? '' : 'none';
+      p2.style.display = mode === 'signup' ? '' : 'none';
+    };
+    const submit = btn('Sign in', async () => {
+      m.textContent = '';
+      if (!e.value || !p.value) { m.textContent = 'Please fill in all required fields.'; return; }
+      if (mode === 'signup') {
+        if (p.value.length < 10) { m.textContent = 'Password must be at least 10 characters.'; return; }
+        if (p.value !== p2.value) { m.textContent = 'Passwords do not match.'; return; }
+        setBusy(true);
+        const { data, error } = await sb.auth.signUp({ email: e.value, password: p.value, options: { data: { display_name: dn.value.trim() || undefined } } });
+        setBusy(false);
+        if (error) { m.textContent = 'Sign-up failed. Try a different email or a stronger password.'; return; }
+        if (!data.session) {
+          updateMode('signin');
+          p.value = ''; p2.value = '';
+          m.textContent = 'Check your email to confirm your account, then sign in and enter the invitation code.';
+          return;
+        }
+        render(); return;
+      }
+      setBusy(true);
+      const { error } = await sb.auth.signInWithPassword({ email: e.value, password: p.value });
+      setBusy(false);
+      if (error) m.textContent = 'Sign-in failed. Check your details.'; else render();
+    });
+    const toggle = btn('Create an account', () => {
+      updateMode(mode === 'signin' ? 'signup' : 'signin');
+      m.textContent = '';
+    }, true);
+    dn.style.display = 'none'; p2.style.display = 'none';
+    app.append(card(el('p', 'Sign in to connect. This extension shows gentle reminders from your paired person. You can pause, hide or disconnect at any time.'), dn, e, p, p2, submit, toggle, m));
+    return;
+  }
   const prefs = await getPrefs();
   if (!prefs) { const t = field('Invitation code'), m = el('p', '', 'm');
     app.append(card(el('p', 'Enter the invitation code you were given.'), t, btn('Continue', async () => {
