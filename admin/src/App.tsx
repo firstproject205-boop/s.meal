@@ -84,16 +84,37 @@ function Messages() {
   const sched = async (type: 'recurring' | 'once') => { setErr(''); if (!rel || !pick) return setErr('Pick a message.'); const { data: u } = await supabase.auth.getUser();
     const row = type === 'recurring' ? { schedule_type: type, local_time: time, weekdays: days } : { schedule_type: type, starts_at: new Date(Date.now() + 5 * 60000).toISOString() };
     const { error } = await supabase.from('schedules').insert({ relationship_id: rel.id, message_id: pick, created_by: u.user!.id, timezone: tz, ...row }); setErr(error ? msgOf(error) : 'Scheduled ✓'); };
+  const [testStatus, setTestStatus] = useState('');
+  const sendTestNow = async () => {
+    setErr(''); setTestStatus('');
+    if (!rel || !pick) return setErr('Pick a message.');
+    const { data: u } = await supabase.auth.getUser();
+    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const testStartsAt = new Date(Date.now() + 60000);
+    const { error } = await supabase.from('schedules').insert({
+      relationship_id: rel.id,
+      message_id: pick,
+      created_by: u.user!.id,
+      timezone: browserTz,
+      schedule_type: 'once',
+      starts_at: testStartsAt.toISOString()
+    });
+    if (error) setErr(msgOf(error));
+    else setTestStatus(`Scheduled for ${testStartsAt.toLocaleTimeString()}`);
+  };
   return <><h2>Messages</h2>
     <form className="card" onSubmit={add}><input placeholder="Title (optional)" maxLength={100} value={title} onChange={e => setTitle(e.target.value)} aria-label="Title" />
       <textarea required rows={3} maxLength={1000} placeholder="Write something kind…" value={body} onChange={e => setBody(e.target.value)} aria-label="Message" />
       <select value={cat} onChange={e => setCat(e.target.value)} aria-label="Category"><option value="romance">Romance</option><option value="encouragement">Encouragement</option><option value="self_care">Self-care</option></select>
       <p className="mut">Preview: <b>{title || 'You have a new reminder'}</b> — {body.slice(0, 80)}</p><button>Save message</button></form>
     {err && <p role="alert" className={err.includes('✓') ? '' : 'err'}>{err}</p>}
-    <div className="card"><b>Schedule</b><select value={pick} onChange={e => setPick(e.target.value)} aria-label="Message to schedule"><option value="">Choose message…</option>{list.filter(m => m.status === 'active').map(m => <option key={m.id} value={m.id}>{m.body.slice(0, 40)}</option>)}</select>
+    {testStatus && <p role="status">{testStatus}</p>}
+    <div className="card"><b>Schedule</b><select value={pick} onChange={e => { setPick(e.target.value); setTestStatus(''); }} aria-label="Message to schedule"><option value="">Choose message…</option>{list.filter(m => m.status === 'active').map(m => <option key={m.id} value={m.id}>{m.body.slice(0, 40)}</option>)}</select>
       <input value={tz} onChange={e => setTz(e.target.value)} aria-label="IANA timezone" /><input type="time" value={time} onChange={e => setTime(e.target.value)} aria-label="Local time" />
       <div>{[1, 2, 3, 4, 5, 6, 7].map(d => <label key={d} style={{ marginRight: 8 }}><input type="checkbox" style={{ width: 'auto' }} checked={days.includes(d)} onChange={() => setDays(x => x.includes(d) ? x.filter(y => y !== d) : [...x, d])} />{'MTWTFSS'[d - 1]}</label>)}</div>
-      <button type="button" onClick={() => sched('recurring')}>Schedule recurring</button><button type="button" className="ghost" onClick={() => sched('once')}>Send once (in 5 min)</button></div>
+      <button type="button" onClick={() => sched('recurring')}>Schedule recurring</button>
+      <button type="button" className="ghost" onClick={() => sched('once')}>Send once (in 5 min)</button>
+      <button type="button" className="ghost" onClick={sendTestNow}>Send test message now</button></div>
     {list.map(m => <div className="card" key={m.id}><span className="mut">{m.category} · {m.status}</span><p>{m.title && <b>{m.title}<br /></b>}{m.body}</p><button className="ghost" onClick={() => del(m.id)}>Delete</button></div>)}</>;
 }
 
