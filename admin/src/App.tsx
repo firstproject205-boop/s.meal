@@ -1,20 +1,53 @@
 import { useEffect, useState, FormEvent } from 'react';
-import { Routes, Route, Navigate, NavLink } from 'react-router-dom';
+import { Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, Rel, Msg } from './supabase';
 
 const msgOf = (e: unknown) => (e as { message?: string })?.message ?? 'Something went wrong';
 
 function Login() {
-  const [email, setEmail] = useState(''), [pw, setPw] = useState(''), [err, setErr] = useState(''), [info, setInfo] = useState('');
-  const go = async (e: FormEvent) => { e.preventDefault(); setErr('');
-    const { error } = await supabase.auth.signInWithPassword({ email, password: pw }); if (error) setErr('Sign-in failed. Check your details.'); };
-  const reset = async () => { await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.origin + '/account' }); setInfo('If that account exists, a recovery email was sent.'); };
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState(''), [pw, setPw] = useState(''), [pw2, setPw2] = useState(''), [displayName, setDisplayName] = useState('');
+  const [err, setErr] = useState(''), [info, setInfo] = useState(''), [busy, setBusy] = useState(false);
+
+  const go = async (e: FormEvent) => {
+    e.preventDefault(); setErr(''); setInfo('');
+    if (mode === 'signup') {
+      if (pw !== pw2) { setErr('Passwords do not match.'); return; }
+      if (pw.length < 10) { setErr('Password must be at least 10 characters.'); return; }
+      setBusy(true);
+      const display_name = displayName.trim();
+      const { data, error } = await supabase.auth.signUp({ email, password: pw, options: { data: { display_name }, emailRedirectTo: window.location.origin } });
+      setBusy(false);
+      if (error) { setErr('Sign-up failed. Try a different email or a stronger password.'); return; }
+      if (!data.session) { setInfo('Check your email to confirm your account, then sign in.'); setMode('signin'); setPw(''); setPw2(''); return; }
+    } else {
+      setBusy(true);
+      const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+      setBusy(false);
+      if (error) setErr('Sign-in failed. Check your details.');
+    }
+  };
+
+  const reset = async () => {
+    if (!email) { setErr('Enter your email address first.'); return; }
+    setErr(''); setBusy(true);
+    await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/account' });
+    setBusy(false);
+    setInfo('If that account exists, a recovery email was sent.');
+  };
+
   return <main><h1>s.meal</h1><form className="card" onSubmit={go}>
-    <label>Email<input type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" /></label>
-    <label>Password<input type="password" required value={pw} onChange={e => setPw(e.target.value)} autoComplete="current-password" /></label>
+    <p className="mut" style={{ textAlign: 'center' }}>{mode === 'signin' ? 'Sign in to your account' : 'Create a new account'}</p>
+    {mode === 'signup' && <label>Display name<input maxLength={60} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Your name" autoComplete="name" disabled={busy} /></label>}
+    <label>Email<input type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" disabled={busy} /></label>
+    <label>Password{mode === 'signup' && ' (10+ characters)'}<input type="password" required minLength={mode === 'signup' ? 10 : undefined} value={pw} onChange={e => setPw(e.target.value)} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} disabled={busy} /></label>
+    {mode === 'signup' && <label>Confirm password<input type="password" required minLength={10} value={pw2} onChange={e => setPw2(e.target.value)} autoComplete="new-password" disabled={busy} /></label>}
     {err && <p className="err" role="alert">{err}</p>}{info && <p className="mut">{info}</p>}
-    <button>Sign in</button><button type="button" className="ghost" onClick={reset}>Forgot password</button></form></main>;
+    <button disabled={busy}>{busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Sign up'}</button>
+    {mode === 'signin' && <button type="button" className="ghost" onClick={reset} disabled={busy}>Forgot password</button>}
+    <button type="button" className="ghost" onClick={() => { setMode(m => m === 'signin' ? 'signup' : 'signin'); setErr(''); setInfo(''); }} disabled={busy}>{mode === 'signin' ? 'Create an account' : 'Already have an account? Sign in'}</button>
+  </form></main>;
 }
 
 function useRel() {
@@ -29,18 +62,21 @@ function Dashboard() {
   useEffect(() => { supabase.from('delivery_events').select('id,event_type,occurred_at').order('occurred_at', { ascending: false }).limit(10).then(r => setEv(r.data ?? []));
     supabase.from('schedules').select('id,next_run_at,timezone').eq('status', 'active').order('next_run_at').limit(5).then(r => setUp(r.data ?? [])); }, []);
   if (loading) return <p>Loading…</p>;
+  if (!rel) return <><h2>Dashboard</h2><div className="card"><p><NavLink to="/pairing">Go to Pairing</NavLink> and create an invitation first.</p></div></>;
   return <><h2>Dashboard</h2>
-    <div className="card">Pairing: <b>{rel ? rel.status : 'none yet'}</b></div>
+    <div className="card">Pairing: <b>{rel.status}</b></div>
     <div className="card"><b>Upcoming</b>{up.length === 0 && <p className="mut">Nothing scheduled.</p>}{up.map(u => <p key={u.id}>{new Date(u.next_run_at).toLocaleString()} <span className="mut">({u.timezone})</span></p>)}</div>
     <div className="card"><b>Recent delivery events</b>{ev.length === 0 && <p className="mut">No events yet.</p>}{ev.map(e => <p key={e.id}>{e.event_type} · {new Date(e.occurred_at).toLocaleString()}</p>)}
       <p className="mut">“Queued” = placed in the recipient's cloud inbox. “Sent to extension” = the extension fetched it. Neither means it was seen. Delivery can be delayed if the laptop is off or the browser is closed. Events are kept 90 days.</p></div></>;
 }
 
 function Messages() {
-  const { rel } = useRel(); const [list, setList] = useState<Msg[]>([]); const [body, setBody] = useState(''), [title, setTitle] = useState(''), [cat, setCat] = useState('encouragement'); const [err, setErr] = useState('');
+  const { rel, loading } = useRel(); const [list, setList] = useState<Msg[]>([]); const [body, setBody] = useState(''), [title, setTitle] = useState(''), [cat, setCat] = useState('encouragement'); const [err, setErr] = useState('');
   const [tz, setTz] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone), [time, setTime] = useState('22:00'), [days, setDays] = useState<number[]>([1, 2, 3, 4, 5]), [pick, setPick] = useState('');
   const load = () => supabase.from('messages').select('*').neq('status', 'deleted').order('created_at', { ascending: false }).then(r => setList((r.data as Msg[]) ?? []));
   useEffect(() => { load(); }, []);
+  if (loading) return <p>Loading…</p>;
+  if (!rel) return <><h2>Messages</h2><div className="card"><p><NavLink to="/pairing">Go to Pairing</NavLink> and create an invitation first.</p></div></>;
   const add = async (e: FormEvent) => { e.preventDefault(); setErr(''); if (!rel) return setErr('Create a pairing first.');
     const { data: u } = await supabase.auth.getUser();
     const { error } = await supabase.from('messages').insert({ relationship_id: rel.id, created_by: u.user!.id, title: title || null, body: body.trim(), category: cat }); if (error) setErr(msgOf(error)); else { setBody(''); setTitle(''); load(); } };
@@ -91,10 +127,38 @@ function Pairing() {
 const Privacy = () => <><h2>Privacy</h2><div className="card"><p>Stored in the cloud: authored messages, schedules, recipient inbox snapshots, preferences, pairing records, and delivery events (deleted after 90 days).</p>
   <p>There are no read receipts. The extension collects no browsing history, keystrokes, screenshots or location. The recipient controls pause, quiet hours, the reminder cap, and disconnect. Some traces (browser extension records, OS notification logs, backups) are outside our control.</p></div></>;
 
-function Account() {
-  const [pw, setPw] = useState(''), [m, setM] = useState('');
-  const upd = async (e: FormEvent) => { e.preventDefault(); const { error } = await supabase.auth.updateUser({ password: pw }); setM(error ? msgOf(error) : 'Password updated'); setPw(''); };
-  return <><h2>Account</h2><form className="card" onSubmit={upd}><input type="password" minLength={10} required value={pw} onChange={e => setPw(e.target.value)} placeholder="New password (10+ chars)" autoComplete="new-password" /><button>Change password</button>{m && <p role="status">{m}</p>}</form>
+function Account({ recovery, onPasswordReset }: { recovery?: boolean; onPasswordReset?: () => void }) {
+  const [pw, setPw] = useState(''), [m, setM] = useState(''), [busy, setBusy] = useState(false);
+  const [isRecovery, setIsRecovery] = useState(Boolean(recovery));
+  useEffect(() => {
+    if (recovery) setIsRecovery(true);
+    const { data: l } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') setIsRecovery(true);
+    });
+    return () => l.subscription.unsubscribe();
+  }, [recovery]);
+  const upd = async (e: FormEvent) => {
+    e.preventDefault();
+    if (pw.length < 10) { setM('Password must be at least 10 characters.'); return; }
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({ password: pw });
+    setBusy(false);
+    setM(error ? msgOf(error) : 'Password updated');
+    setPw('');
+    if (!error) {
+      setIsRecovery(false);
+      if (onPasswordReset) onPasswordReset();
+    }
+  };
+  return <><h2>Account</h2>
+    {isRecovery && <div className="card"><p><b>Password recovery:</b> Set your new password below.</p></div>}
+    <form className="card" onSubmit={upd}>
+      <label>New password (10+ characters)
+        <input type="password" minLength={10} required value={pw} onChange={e => setPw(e.target.value)} placeholder="New password (10+ chars)" autoComplete="new-password" disabled={busy} />
+      </label>
+      <button disabled={busy}>{busy ? 'Updating…' : 'Change password'}</button>
+      {m && <p role="status">{m}</p>}
+    </form>
     <div className="card"><button onClick={async () => { const { data } = await supabase.rpc('export_my_data'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })); a.download = 's-meal-export.json'; a.click(); }}>Export my data</button>
       <button className="ghost" onClick={() => supabase.auth.signOut()}>Sign out</button></div></>;
 }
@@ -148,10 +212,22 @@ function Settings() {
 
 export default function App() {
   const [s, setS] = useState<Session | null>(null), [ready, setReady] = useState(false);
-  useEffect(() => { supabase.auth.getSession().then(({ data }) => { setS(data.session); setReady(true); }); const { data: l } = supabase.auth.onAuthStateChange((_e, x) => setS(x)); return () => l.subscription.unsubscribe(); }, []);
+  const [recovery, setRecovery] = useState(false);
+  const navigate = useNavigate();
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => { setS(data.session); setReady(true); });
+    const { data: l } = supabase.auth.onAuthStateChange((event, x) => {
+      setS(x);
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecovery(true);
+        navigate('/account');
+      }
+    });
+    return () => l.subscription.unsubscribe();
+  }, [navigate]);
   if (!ready) return <main>Loading…</main>;
   if (!s) return <Routes><Route path="*" element={<Login />} /></Routes>;
   return <><main><Routes><Route path="/dashboard" element={<Dashboard />} /><Route path="/messages" element={<Messages />} /><Route path="/messages/new" element={<Navigate to="/messages" />} /><Route path="/schedules" element={<Schedules />} />
-    <Route path="/pairing" element={<Pairing />} /><Route path="/devices" element={<Pairing />} /><Route path="/settings" element={<Settings />} /><Route path="/privacy" element={<Privacy />} /><Route path="/account" element={<Account />} /><Route path="*" element={<Navigate to="/dashboard" />} /></Routes></main>
+    <Route path="/pairing" element={<Pairing />} /><Route path="/devices" element={<Pairing />} /><Route path="/settings" element={<Settings />} /><Route path="/privacy" element={<Privacy />} /><Route path="/account" element={<Account recovery={recovery} onPasswordReset={() => setRecovery(false)} />} /><Route path="*" element={<Navigate to="/dashboard" />} /></Routes></main>
     <nav aria-label="Main">{['dashboard', 'messages', 'schedules', 'pairing', 'settings', 'privacy', 'account'].map(p => <NavLink key={p} to={'/' + p} className={({ isActive }) => isActive ? 'active' : ''}>{p}</NavLink>)}</nav></>;
 }
