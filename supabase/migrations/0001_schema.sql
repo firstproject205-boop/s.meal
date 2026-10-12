@@ -116,7 +116,7 @@ begin if new.status in ('deleted','archived') and old.status<>new.status then
 create trigger messages_au after update on messages for each row execute function messages_deleted();
 
 -- ===== RPCs =====
-create function create_invitation() returns text language plpgsql security definer set search_path=public as $$
+create function create_invitation() returns text language plpgsql security definer set search_path=public,extensions as $$
 declare rid uuid; tok text; begin
  if auth.uid() is null then raise exception 'auth required'; end if;
  if (select count(*) from invitations where created_by=auth.uid() and created_at>now()-interval '1 hour')>=5 then raise exception 'rate limited'; end if;
@@ -129,7 +129,7 @@ declare rid uuid; tok text; begin
  insert into invitations(relationship_id,token_hash,created_by,expires_at) values(rid,encode(digest(tok,'sha256'),'hex'),auth.uid(),now()+interval '24 hours');
  return tok; end $$;
 
-create function redeem_invitation(token text) returns table(relationship_id uuid,admin_name text) language plpgsql security definer set search_path=public as $$
+create function redeem_invitation(token text) returns table(relationship_id uuid,admin_name text) language plpgsql security definer set search_path=public,extensions as $$
 declare inv invitations; rel relationships; begin
  if auth.uid() is null then raise exception 'auth required'; end if;
  select * into inv from invitations where token_hash=encode(digest(token,'sha256'),'hex') for update;

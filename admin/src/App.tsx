@@ -109,16 +109,17 @@ function Schedules() {
 }
 
 function Pairing() {
-  const { rel, reload } = useRel(); const [tok, setTok] = useState(''), [err, setErr] = useState('');
+  const { rel, reload } = useRel(); const [tok, setTok] = useState(''), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
   const [devs, setDevs] = useState<{ id: string; status: string; last_seen_at: string | null }[]>([]);
   const loadD = () => supabase.from('device_installations').select('id,status,last_seen_at').then(r => setDevs(r.data ?? []));
   useEffect(() => { loadD(); }, []);
-  const inv = async () => { setErr(''); const { data, error } = await supabase.rpc('create_invitation'); if (error) setErr(msgOf(error)); else { setTok(data as string); reload(); } };
+  const inv = async () => { setErr(''); setBusy(true); const { data, error } = await supabase.rpc('create_invitation'); setBusy(false); if (error) setErr(msgOf(error)); else { setTok(data as string); reload(); } };
   const revoke = async () => { if (confirm('Disconnect this relationship? Devices will be revoked and schedules cancelled.') && rel) { await supabase.rpc('set_relationship_status', { rid: rel.id, s: 'revoked' }); reload(); loadD(); } };
   const rd = async (id: string) => { await supabase.rpc('revoke_device', { did: id }); loadD(); };
   return <><h2>Pairing & devices</h2><div className="card">Status: <b>{rel?.status ?? 'none'}</b>
-    {(!rel || rel.status === 'pending') && <button onClick={inv}>Create invitation (24h, single use)</button>}
-    {tok && <><p>Share this code with the recipient privately. It is shown once:</p><code style={{ wordBreak: 'break-all' }}>{tok}</code></>}{err && <p className="err" role="alert">{err}</p>}
+    {(!rel || rel.status === 'pending' || rel.status === 'revoked') && <button onClick={inv} disabled={busy}>{busy ? 'Generating invitation…' : 'Create invitation (24h, single use)'}</button>}
+    {tok && <><p>Share this code with the recipient privately. It is shown once:</p><code style={{ wordBreak: 'break-all' }}>{tok}</code></>}
+    {err && <p className="err" role="alert">{err}</p>}
     {rel && rel.status !== 'revoked' && <button className="ghost" onClick={revoke}>Disconnect</button>}
     <p className="mut">The recipient must sign in, enter the code, and approve before anything is sent.</p></div>
     {devs.map(d => <div className="card" key={d.id}>Device · {d.status}<p className="mut">Last seen {d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : 'never'}</p>{d.status === 'active' && <button className="ghost" onClick={() => rd(d.id)}>Revoke</button>}</div>)}</>;
