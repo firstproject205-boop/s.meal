@@ -105,7 +105,7 @@ begin
   if new.schedule_type='once' then new.next_run_at:=new.starts_at;
   else new.next_run_at:=next_occurrence(new.timezone,new.local_time,new.weekdays,greatest(now(),coalesce(new.starts_at,now()))); end if;
  end if;
- if new.status in ('cancelled','paused','completed') and new.status<>'paused' then new.next_run_at:=null; end if;
+ if new.status in ('cancelled','completed') then new.next_run_at:=null; end if;
  return new; end $$;
 create trigger schedules_bi before insert or update on schedules for each row execute function schedules_before();
 
