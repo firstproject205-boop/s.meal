@@ -1,8 +1,8 @@
 import { sb, getPrefs, installationId, inQuietHours, underCap, Item } from './shared';
 
 const ALARM = 'smeal-sync';
-chrome.runtime.onInstalled.addListener(() => chrome.alarms.create(ALARM, { periodInMinutes: 1 }));
-chrome.runtime.onStartup.addListener(() => { chrome.alarms.create(ALARM, { periodInMinutes: 1 }); sync(); });
+chrome.runtime.onInstalled.addListener(() => chrome.alarms.create(ALARM, { periodInMinutes: 0.5 }));
+chrome.runtime.onStartup.addListener(() => { chrome.alarms.create(ALARM, { periodInMinutes: 0.5 }); sync(); });
 chrome.alarms.onAlarm.addListener(a => { if (a.name === ALARM) sync(); });
 chrome.runtime.onMessage.addListener((m, _s, reply) => {
   if (m?.type === 'sync') { sync().then(() => reply(true)).catch(() => reply(false)); return true; }
